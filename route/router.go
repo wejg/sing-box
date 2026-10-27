@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -35,6 +36,8 @@ type Router struct {
 	network           adapter.NetworkManager
 	httpClientManager adapter.HTTPClientManager
 	rules             []adapter.Rule
+	rulesAccess       sync.RWMutex
+	ruleByTag         map[string]adapter.Rule
 	needFindProcess   bool
 	needFindNeighbor  bool
 	leaseFiles        []string
@@ -62,6 +65,7 @@ func NewRouter(ctx context.Context, logFactory log.Factory, options option.Route
 		network:           service.FromContext[adapter.NetworkManager](ctx),
 		httpClientManager: service.FromContext[adapter.HTTPClientManager](ctx),
 		rules:             make([]adapter.Rule, 0, len(options.Rules)),
+		ruleByTag:         make(map[string]adapter.Rule),
 		ruleSetMap:        make(map[string]adapter.RuleSet),
 		needFindProcess:   hasRule(options.Rules, isProcessRule) || hasDNSRule(dnsOptions.Rules, isProcessDNSRule) || options.FindProcess,
 		needFindNeighbor:  hasRule(options.Rules, isNeighborRule) || hasDNSRule(dnsOptions.Rules, isNeighborDNSRule) || hasLocalNeighborDNSServer(dnsOptions.Servers) || options.FindNeighbor,
@@ -73,6 +77,11 @@ func NewRouter(ctx context.Context, logFactory log.Factory, options option.Route
 
 func (r *Router) Initialize(rules []option.Rule, ruleSets []option.RuleSet) error {
 	for i, options := range rules {
+		if options.RuleTag != "" {
+			if _, exists := r.ruleByTag[options.RuleTag]; exists {
+				return E.New("duplicate rule tag: ", options.RuleTag)
+			}
+		}
 		err := R.ValidateNoNestedRuleActions(options)
 		if err != nil {
 			return E.Cause(err, "parse rule[", i, "]")
@@ -82,6 +91,9 @@ func (r *Router) Initialize(rules []option.Rule, ruleSets []option.RuleSet) erro
 			return E.Cause(err, "parse rule[", i, "]")
 		}
 		r.rules = append(r.rules, rule)
+		if options.RuleTag != "" {
+			r.ruleByTag[options.RuleTag] = rule
+		}
 	}
 	for i, options := range ruleSets {
 		for _, tag := range options.Tag {
@@ -100,6 +112,8 @@ func (r *Router) Initialize(rules []option.Rule, ruleSets []option.RuleSet) erro
 }
 
 func (r *Router) Start(stage adapter.StartStage) error {
+	r.rulesAccess.Lock()
+	defer r.rulesAccess.Unlock()
 	monitor := taskmonitor.New(r.logger, C.StartTimeout)
 	switch stage {
 	case adapter.StartStateInitialize:
@@ -220,6 +234,9 @@ func (r *Router) Start(stage adapter.StartStage) error {
 }
 
 func (r *Router) Close() error {
+	r.rulesAccess.Lock()
+	defer r.rulesAccess.Unlock()
+	r.started = false
 	monitor := taskmonitor.New(r.logger, C.StopTimeout)
 	var err error
 	if r.neighborResolver != nil {
@@ -266,7 +283,9 @@ func (r *Router) RuleSet(tag string) (adapter.RuleSet, bool) {
 }
 
 func (r *Router) Rules() []adapter.Rule {
-	return r.rules
+	r.rulesAccess.RLock()
+	defer r.rulesAccess.RUnlock()
+	return append([]adapter.Rule(nil), r.rules...)
 }
 
 func (r *Router) AppendTracker(tracker adapter.ConnectionTracker) {

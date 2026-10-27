@@ -693,6 +693,10 @@ func (s *Box) CloseIdleConnections() {
 	s.referenceManager.CloseIdleConnections()
 }
 
+func (s *Box) UpdateReferences(options option.Options) {
+	s.referenceManager.UpdateOptions(options)
+}
+
 func (s *Box) LogFactory() log.Factory {
 	return s.logFactory
 }

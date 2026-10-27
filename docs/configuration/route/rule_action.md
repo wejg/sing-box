@@ -280,7 +280,9 @@ of accepted values and platform notes.
 {
   "action": "sniff",
   "sniffer": [],
-  "timeout": ""
+  "timeout": "",
+  "override_destination": false,
+  "override_excluded_domains": []
 }
 ```
 
@@ -301,6 +303,17 @@ Available protocol values an be found on in [Protocol Sniff](../sniff/)
 Timeout for sniffing.
 
 `300ms` is used by default.
+
+
+#### override_destination
+
+Disabled by default. When enabled, replace the connection destination address with a valid sniffed domain while preserving the destination port.
+
+#### override_excluded_domains
+
+Domain fragments for which the destination address is preserved. Matching follows Xray's unprefixed `domainsExcluded` behavior: case-insensitive substring matching. The `full:`, `domain:`, and `regexp:` prefixes are not supported.
+
+An excluded domain still participates in protocol and domain routing; only the destination override is skipped.
 
 ### resolve
 

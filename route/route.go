@@ -314,6 +314,8 @@ func (r *Router) routePacketConnection(ctx context.Context, conn N.PacketConn, m
 }
 
 func (r *Router) PreMatch(metadata adapter.InboundContext, firstPacket []byte) adapter.PreMatchResult {
+	r.rulesAccess.RLock()
+	defer r.rulesAccess.RUnlock()
 	ctx := log.ContextWithNewID(r.ctx)
 	metadata.PreMatch = true
 	continueResult := adapter.PreMatchResult{Action: adapter.PreMatchContinue}
@@ -363,8 +365,7 @@ func (r *Router) PreMatch(metadata adapter.InboundContext, firstPacket []byte) a
 				}
 				continue
 			}
-			//goland:noinspection GoDeprecation
-			if action.OverrideDestination && M.IsDomainName(metadata.Domain) {
+			if action.ShouldOverrideDestination(metadata.Domain) {
 				metadata.Destination = M.Socksaddr{
 					Fqdn: metadata.Domain,
 					Port: metadata.Destination.Port,
@@ -597,6 +598,8 @@ func (r *Router) matchRule(
 	selectedRule adapter.Rule, selectedRuleIndex int,
 	buffers []*buf.Buffer, packetBuffers []*N.PacketBuffer, fatalErr error,
 ) {
+	r.rulesAccess.RLock()
+	defer r.rulesAccess.RUnlock()
 	fatalErr = r.prepareMatchMetadata(ctx, metadata)
 	if fatalErr != nil {
 		return
@@ -750,8 +753,7 @@ func (r *Router) actionSniff(
 		metadata.SnifferNames = action.SnifferNames
 		metadata.SniffError = err
 		if err == nil {
-			//goland:noinspection GoDeprecation
-			if action.OverrideDestination && M.IsDomainName(metadata.Domain) {
+			if action.ShouldOverrideDestination(metadata.Domain) {
 				metadata.Destination = M.Socksaddr{
 					Fqdn: metadata.Domain,
 					Port: metadata.Destination.Port,
@@ -874,8 +876,7 @@ func (r *Router) actionSniff(
 		}
 	finally:
 		if err == nil {
-			//goland:noinspection GoDeprecation
-			if action.OverrideDestination && M.IsDomainName(metadata.Domain) {
+			if action.ShouldOverrideDestination(metadata.Domain) {
 				metadata.Destination = M.Socksaddr{
 					Fqdn: metadata.Domain,
 					Port: metadata.Destination.Port,

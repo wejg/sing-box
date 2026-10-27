@@ -3,6 +3,7 @@ package route
 import (
 	"context"
 	"slices"
+	"sync"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/urltest"
@@ -16,6 +17,7 @@ import (
 var _ adapter.LifecycleService = (*ReferenceManager)(nil)
 
 type ReferenceManager struct {
+	access                 sync.Mutex
 	ctx                    context.Context
 	logger                 log.ContextLogger
 	rules                  []option.Rule
@@ -28,6 +30,19 @@ type ReferenceManager struct {
 }
 
 func NewReferenceManager(ctx context.Context, logger log.ContextLogger, options option.Options) *ReferenceManager {
+	m := &ReferenceManager{ctx: ctx, logger: logger}
+	m.setOptions(options)
+	return m
+}
+
+func (m *ReferenceManager) UpdateOptions(options option.Options) {
+	m.access.Lock()
+	defer m.access.Unlock()
+	m.setOptions(options)
+	m.updateLocked()
+}
+
+func (m *ReferenceManager) setOptions(options option.Options) {
 	var (
 		staticOutbounds  []string
 		staticTransports []string
@@ -46,19 +61,15 @@ func NewReferenceManager(ctx context.Context, logger log.ContextLogger, options 
 		dnsRules []option.DNSRule
 	)
 	if options.Route != nil {
-		rules = options.Route.Rules
+		rules = slices.Clone(options.Route.Rules)
 	}
 	if options.DNS != nil {
 		dnsRules = options.DNS.Rules
 	}
-	return &ReferenceManager{
-		ctx:              ctx,
-		logger:           logger,
-		rules:            rules,
-		dnsRules:         dnsRules,
-		staticOutbounds:  staticOutbounds,
-		staticTransports: staticTransports,
-	}
+	m.rules = rules
+	m.dnsRules = dnsRules
+	m.staticOutbounds = staticOutbounds
+	m.staticTransports = staticTransports
 }
 
 func appendDomainResolver(transports []string, rawOptions any) []string {
@@ -115,6 +126,12 @@ func (m *ReferenceManager) loop() {
 }
 
 func (m *ReferenceManager) update() {
+	m.access.Lock()
+	defer m.access.Unlock()
+	m.updateLocked()
+}
+
+func (m *ReferenceManager) updateLocked() {
 	var mode string
 	clashMode := service.PtrFromContext[clashmode.Manager](m.ctx)
 	if clashMode != nil {

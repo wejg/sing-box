@@ -3,6 +3,7 @@ package daemon
 import (
 	"bytes"
 	"context"
+	"strconv"
 
 	"github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
@@ -24,6 +25,7 @@ import (
 )
 
 type Instance struct {
+	options               option.Options
 	ctx                   context.Context
 	cancel                context.CancelFunc
 	instance              *box.Box
@@ -93,6 +95,22 @@ func (s *StartedService) newInstance(ctx context.Context, profileContent string,
 		cancel()
 		return nil, err
 	}
+	// Keep the runtime-assigned tags stable for hot replacement and rollback.
+	for index := range options.Inbounds {
+		if options.Inbounds[index].Tag == "" {
+			options.Inbounds[index].Tag = strconv.Itoa(index)
+		}
+	}
+	for index := range options.Outbounds {
+		if options.Outbounds[index].Tag == "" {
+			options.Outbounds[index].Tag = strconv.Itoa(index)
+		}
+	}
+	for index := range options.Endpoints {
+		if options.Endpoints[index].Tag == "" {
+			options.Endpoints[index].Tag = strconv.Itoa(index)
+		}
+	}
 	if overrideOptions != nil {
 		for _, inbound := range options.Inbounds {
 			if tunInboundOptions, isTUN := inbound.Options.(*option.TunInboundOptions); isTUN {
@@ -120,6 +138,7 @@ func (s *StartedService) newInstance(ctx context.Context, profileContent string,
 	urlTestHistoryStorage := urltest.NewHistoryStorage()
 	ctx = service.ContextWithPtr(ctx, urlTestHistoryStorage)
 	i := &Instance{
+		options:               options,
 		ctx:                   ctx,
 		cancel:                cancel,
 		urlTestHistoryStorage: urlTestHistoryStorage,

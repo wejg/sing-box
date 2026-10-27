@@ -27,3 +27,12 @@ func TestDNSRuleActionRespondRejectsUnknownFields(t *testing.T) {
 	err := json.UnmarshalContext(context.Background(), []byte(`{"action":"respond","disable_cache":true}`), &action)
 	require.ErrorContains(t, err, "unknown field")
 }
+
+func TestSniffOverrideOptionsRoundTrip(t *testing.T) {
+	content := `{"action":"sniff","sniffer":["http","tls"],"override_destination":true,"override_excluded_domains":["courier.push.apple.com","Mijia Cloud","dlg.io.mi.com"]}`
+	var action RuleAction
+	require.NoError(t, json.Unmarshal([]byte(content), &action))
+	encoded, err := json.Marshal(action)
+	require.NoError(t, err)
+	require.JSONEq(t, content, string(encoded))
+}

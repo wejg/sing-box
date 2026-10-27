@@ -270,7 +270,9 @@ UDP 连接超时时间。
 {
   "action": "sniff",
   "sniffer": [],
-  "timeout": ""
+  "timeout": "",
+  "override_destination": false,
+  "override_excluded_domains": []
 }
 ```
 
@@ -291,6 +293,17 @@ UDP 连接超时时间。
 探测超时时间。
 
 默认使用 300ms。
+
+
+#### override_destination
+
+默认关闭。开启后，用嗅探得到的有效域名替换连接的目标地址，保留原目标端口。
+
+#### override_excluded_domains
+
+不覆盖目标地址的域名片段。继承 Xray 无前缀 `domainsExcluded` 的行为：对域名和列表项转为小写后做子串匹配，不支持 `full:`、`domain:` 或 `regexp:` 前缀。
+
+命中排除项时仍保留嗅探得到的协议和域名，供后续路由规则使用；只保留原目标地址。
 
 ### resolve
 

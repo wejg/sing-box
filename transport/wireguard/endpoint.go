@@ -251,7 +251,12 @@ func (e *Endpoint) Start(postStart bool) error {
 	err = wgDevice.IpcSet(ipcConf.String())
 	if err != nil {
 		wgDevice.Close()
-		return E.Cause(err, "setup wireguard: \n", ipcConf.String())
+		return E.Cause(err, "setup WireGuard device")
+	}
+	// Wait for the bind so startup errors cannot publish an unusable hot replacement.
+	if err = wgDevice.Up(); err != nil {
+		wgDevice.Close()
+		return E.Cause(err, "start WireGuard device")
 	}
 	e.device = wgDevice
 	e.pause = service.FromContext[pause.Manager](e.options.Context)

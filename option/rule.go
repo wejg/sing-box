@@ -15,6 +15,7 @@ import (
 
 type _Rule struct {
 	Type           string      `json:"type,omitempty" enum:"default,logical"`
+	RuleTag        string      `json:"ruleTag,omitempty"`
 	DefaultOptions DefaultRule `json:"-"`
 	LogicalOptions LogicalRule `json:"-"`
 }
@@ -80,7 +81,13 @@ func (r Rule) DescribeSchema(builder schema.Builder) (*schema.Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		return ruleUnion(builder, reflect.TypeFor[RawDefaultRule](), nestedRef, actionRef)
+		node, err := ruleUnion(builder, reflect.TypeFor[RawDefaultRule](), nestedRef, actionRef)
+		if err == nil {
+			for _, variant := range node.OneOf {
+				variant.AllOf[0].Properties.Put("ruleTag", schema.StringNode())
+			}
+		}
+		return node, err
 	})
 }
 
@@ -239,6 +246,7 @@ func rulePayloadWithoutType(ctx context.Context, data []byte) ([]byte, error) {
 		return nil, err
 	}
 	content.Remove("type")
+	content.Remove("ruleTag")
 	return content.MarshalJSONContext(ctx)
 }
 

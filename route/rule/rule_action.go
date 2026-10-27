@@ -105,8 +105,10 @@ func NewRuleAction(ctx context.Context, logger logger.ContextLogger, action opti
 		return &RuleActionHijackDNS{}, nil
 	case C.RuleActionTypeSniff:
 		sniffAction := &RuleActionSniff{
-			SnifferNames: action.SniffOptions.Sniffer,
-			Timeout:      time.Duration(action.SniffOptions.Timeout),
+			SnifferNames:            action.SniffOptions.Sniffer,
+			Timeout:                 time.Duration(action.SniffOptions.Timeout),
+			OverrideDestination:     action.SniffOptions.OverrideDestination,
+			OverrideExcludedDomains: action.SniffOptions.OverrideExcludedDomains,
 		}
 		return sniffAction, sniffAction.build()
 	case C.RuleActionTypeResolve:
@@ -508,12 +510,26 @@ func (r *RuleActionHijackDNS) String() string {
 }
 
 type RuleActionSniff struct {
-	SnifferNames   []string
-	StreamSniffers []sniff.StreamSniffer
-	PacketSniffers []sniff.PacketSniffer
-	Timeout        time.Duration
-	// Deprecated
-	OverrideDestination bool
+	SnifferNames            []string
+	StreamSniffers          []sniff.StreamSniffer
+	PacketSniffers          []sniff.PacketSniffer
+	Timeout                 time.Duration
+	OverrideDestination     bool
+	OverrideExcludedDomains []string
+}
+
+func (r *RuleActionSniff) ShouldOverrideDestination(domain string) bool {
+	if !r.OverrideDestination || !M.IsDomainName(domain) {
+		return false
+	}
+	domain = strings.ToLower(domain)
+	// Match Xray's unprefixed domainsExcluded entries: case-insensitive substrings.
+	for _, excluded := range r.OverrideExcludedDomains {
+		if strings.Contains(domain, strings.ToLower(excluded)) {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *RuleActionSniff) Type() string {

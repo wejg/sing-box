@@ -83,7 +83,7 @@ func (m *Manager) Close() error {
 func (m *Manager) Inbounds() []adapter.Inbound {
 	m.access.Lock()
 	defer m.access.Unlock()
-	return m.inbounds
+	return append([]adapter.Inbound(nil), m.inbounds...)
 }
 
 func (m *Manager) Get(tag string) (adapter.Inbound, bool) {
@@ -114,7 +114,9 @@ func (m *Manager) Remove(tag string) error {
 	started := m.started
 	m.access.Unlock()
 	if started {
-		return inbound.Close()
+		if err := inbound.Close(); err != nil {
+			m.logger.Error(E.Cause(err, "close removed inbound/", inbound.Type(), "[", inbound.Tag(), "]"))
+		}
 	}
 	return nil
 }
@@ -125,25 +127,23 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 		return err
 	}
 	m.access.Lock()
-	defer m.access.Unlock()
-	if m.started {
+	started := m.started
+	m.access.Unlock()
+	if started {
 		name := "inbound/" + inbound.Type() + "[" + inbound.Tag() + "]"
 		for _, stage := range adapter.ListStartStages {
 			done := adapter.LogElapsed(m.logger, stage, " ", name)
 			err = adapter.LegacyStart(inbound, stage)
 			done()
 			if err != nil {
+				_ = inbound.Close()
 				return E.Cause(err, stage, " ", name)
 			}
 		}
 	}
-	if existsInbound, loaded := m.inboundByTag[tag]; loaded {
-		if m.started {
-			err = existsInbound.Close()
-			if err != nil {
-				return E.Cause(err, "close inbound/", existsInbound.Type(), "[", existsInbound.Tag(), "]")
-			}
-		}
+	m.access.Lock()
+	previous := m.inboundByTag[tag]
+	if existsInbound := previous; existsInbound != nil {
 		existsIndex := common.Index(m.inbounds, func(it adapter.Inbound) bool {
 			return it == existsInbound
 		})
@@ -154,5 +154,11 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 	}
 	m.inbounds = append(m.inbounds, inbound)
 	m.inboundByTag[tag] = inbound
+	m.access.Unlock()
+	if started && previous != nil {
+		if err := previous.Close(); err != nil {
+			m.logger.Error(E.Cause(err, "close replaced inbound/", previous.Type(), "[", previous.Tag(), "]"))
+		}
+	}
 	return nil
 }
